@@ -5,13 +5,47 @@ use actix_web::{
 };
 use anyhow::Result;
 use futures_util::StreamExt as _;
-use std::{fs::File, io::Write, path::PathBuf};
+use std::{fs::File, io::Write, path::PathBuf, process::Command};
+
+enum Artist {
+    Cat,
+    MaoBuYi,
+}
+
+impl Artist {
+    /// Get model path
+    pub fn model(&self) -> &'static str {
+        match self {
+            Artist::Cat => "cat/G_2875.pth",
+            Artist::MaoBuYi => "models/maobuyi/G_3458.pth",
+        }
+    }
+
+    /// Get config path
+    pub fn config(&self) -> &'static str {
+        match self {
+            Artist::Cat => "cat/config.json",
+            Artist::MaoBuYi => "models/maobuyi/config.json",
+        }
+    }
+}
+
+impl From<&str> for Artist {
+    fn from(s: &str) -> Artist {
+        match s {
+            "cat" => Artist::Cat,
+            "mb" => Artist::MaoBuYi,
+            _ => unreachable!("Unsupported artist"),
+        }
+    }
+}
 
 /// Save file to directory
-async fn save_file(bytes: Vec<Bytes>, path: &PathBuf) -> anyhow::Result<()> {
-    let path = path.clone();
+async fn save_file(bytes: Vec<Bytes>, path: PathBuf) -> anyhow::Result<PathBuf> {
+    let path = PathBuf::from("upload").join(path);
+    let cloned_path = path.clone();
     // File::create is blocking operation, use threadpool
-    let mut f = web::block(|| File::create(path)).await??;
+    let mut f = web::block(|| File::create(cloned_path)).await??;
 
     // Field in turn is stream of *Bytes* object
     for data in bytes {
@@ -19,17 +53,34 @@ async fn save_file(bytes: Vec<Bytes>, path: &PathBuf) -> anyhow::Result<()> {
         f = web::block(move || f.write_all(&data).map(|_| f)).await??;
     }
 
-    Ok(())
+    Ok(path)
 }
 
 /// Train model
-async fn train(path: &PathBuf) -> anyhow::Result<PathBuf> {
-    Ok(path.clone())
+async fn train(path: &PathBuf, artist: impl Into<Artist>) -> anyhow::Result<PathBuf> {
+    let artist = artist.into();
+
+    let mut args = ["infer", "-m", artist.model(), "-c", artist.config()]
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>();
+
+    let input = path.to_string_lossy().to_string();
+    let output = input.replace("upload", "download");
+    args.push("-o".into());
+    args.push(output.clone());
+    args.push(input);
+
+    Command::new("svc")
+        .env("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+        .args(args)
+        .status()?;
+    Ok(output.into())
 }
 
 /// greeting
 #[post("/vc/{name}")]
-async fn upload(_artist: web::Path<String>, mut payload: Multipart) -> Result<HttpResponse, Error> {
+async fn upload(artist: web::Path<String>, mut payload: Multipart) -> Result<HttpResponse, Error> {
     let mut bytes: Vec<Bytes> = Vec::new();
 
     // iterate over multipart stream
@@ -50,10 +101,11 @@ async fn upload(_artist: web::Path<String>, mut payload: Multipart) -> Result<Ht
         return Ok(HttpResponse::BadRequest().into());
     }
 
-    let path = PathBuf::from("source.wav");
-    save_file(bytes, &path).await.expect("save file error");
+    let input = save_file(bytes, PathBuf::from("source.wav"))
+        .await
+        .expect("save file error");
 
-    let output = train(&path)
+    let output = train(&input, artist.to_string().as_ref())
         .await
         .expect("train error")
         .to_string_lossy()
@@ -62,7 +114,7 @@ async fn upload(_artist: web::Path<String>, mut payload: Multipart) -> Result<Ht
     Ok(HttpResponse::Ok()
         .content_type(header::ContentType::plaintext())
         .insert_header(("X-Hdr", "sample"))
-        .body(format!("/download/{output}")))
+        .body(format!("/{output}")))
 }
 
 /// Download file
@@ -70,7 +122,8 @@ async fn upload(_artist: web::Path<String>, mut payload: Multipart) -> Result<Ht
 async fn download(req: HttpRequest, audio: web::Path<String>) -> Result<HttpResponse, Error> {
     println!("download: {:?}", audio);
     let path = audio.to_string();
-    let file = actix_files::NamedFile::open_async(PathBuf::from(path)).await?;
+    let file =
+        actix_files::NamedFile::open_async(PathBuf::from(format!("download/{path}"))).await?;
     Ok(file.into_response(&req))
 }
 
