@@ -1,0 +1,18 @@
+[package]
+name = "fuzz"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+path = "bin/fuzz.rs"
+name = "fuzz"
+
+[dependencies]
+actix-cors = "0.6.4"
+actix-multipart = "0.6.1"
+actix-web = "4.4.0"
+anyhow = "1.0.75"
+clap = { version = "4.4.2", features = [ "derive" ] }
+env_logger = "0.10.0"
+futures-util = "0.3.28"
+log = "0.4.20"
