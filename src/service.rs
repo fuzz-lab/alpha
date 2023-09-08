@@ -123,7 +123,7 @@ async fn upload(artist: web::Path<String>, mut payload: Multipart) -> Result<Htt
         return Ok(HttpResponse::BadRequest().into());
     }
 
-    filename += &format!("_{}", artist.as_str());
+    filename = format!("{}_{filename}", artist.as_str());
     let input = save_file(bytes, PathBuf::from(filename))
         .await
         .expect("save file error");
