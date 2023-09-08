@@ -23,7 +23,7 @@ impl Artist {
             Artist::MaoBuYi => "models/maobuyi/G_3458.pth",
             Artist::WangFei => "models/wf/G_4788.pth",
             Artist::DuiZhang => "models/dz/G_5229.pth",
-            Artist::XiaoXiao => "models/xx/G_5229.pth",
+            Artist::XiaoXiao => "models/xx/G_2199.pth",
         }
     }
 
