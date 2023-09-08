@@ -167,7 +167,7 @@ pub async fn start(port: u16) -> anyhow::Result<()> {
 
         App::new().wrap(cors).service(upload).service(download)
     })
-    .bind(("0.0.0.0", port))?
+    .bind_openssl("127.0.0.1:8080", builder)?
     .run()
     .await
     .map_err(Into::into)
