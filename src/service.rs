@@ -10,6 +10,9 @@ use std::{fs::File, io::Write, path::PathBuf, process::Command};
 enum Artist {
     Cat,
     MaoBuYi,
+    WangFei,
+    DuiZhang,
+    XiaoXiao,
 }
 
 impl Artist {
@@ -17,7 +20,10 @@ impl Artist {
     pub fn model(&self) -> &'static str {
         match self {
             Artist::Cat => "cat/G_2875.pth",
-            Artist::MaoBuYi => "models/maobuyi/G_3458.pth",
+            Artist::MaoBuYi => "maobuyi/G_3458.pth",
+            Artist::WangFei => "wf/G_4788.pth",
+            Artist::DuiZhang => "dz/G_5229.pth",
+            Artist::XiaoXiao => "xx/G_5229.pth",
         }
     }
 
@@ -25,7 +31,10 @@ impl Artist {
     pub fn config(&self) -> &'static str {
         match self {
             Artist::Cat => "cat/config.json",
-            Artist::MaoBuYi => "models/maobuyi/config.json",
+            Artist::MaoBuYi => "maobuyi/config.json",
+            Artist::WangFei => "wf/config.json",
+            Artist::DuiZhang => "dz/config.json",
+            Artist::XiaoXiao => "xx/config.json",
         }
     }
 }
@@ -35,6 +44,9 @@ impl From<&str> for Artist {
         match s {
             "cat" => Artist::Cat,
             "mb" => Artist::MaoBuYi,
+            "wf" => Artist::WangFei,
+            "dz" => Artist::DuiZhang,
+            "xx" => Artist::XiaoXiao,
             _ => unreachable!("Unsupported artist"),
         }
     }
@@ -44,6 +56,8 @@ impl From<&str> for Artist {
 async fn save_file(bytes: Vec<Bytes>, path: PathBuf) -> anyhow::Result<PathBuf> {
     let path = PathBuf::from("upload").join(path);
     let cloned_path = path.clone();
+
+    log::trace!("saving file at {:?}", cloned_path);
     // File::create is blocking operation, use threadpool
     let mut f = web::block(|| File::create(cloned_path)).await??;
 
@@ -71,6 +85,8 @@ async fn train(path: &PathBuf, artist: impl Into<Artist>) -> anyhow::Result<Path
     args.push(output.clone());
     args.push(input);
 
+    log::trace!("saving output at {:?}", output);
+
     Command::new("svc")
         .env("PYTORCH_ENABLE_MPS_FALLBACK", "1")
         .args(args)
@@ -82,18 +98,24 @@ async fn train(path: &PathBuf, artist: impl Into<Artist>) -> anyhow::Result<Path
 #[post("/vc/{name}")]
 async fn upload(artist: web::Path<String>, mut payload: Multipart) -> Result<HttpResponse, Error> {
     let mut bytes: Vec<Bytes> = Vec::new();
+    let mut filename = String::new();
 
     // iterate over multipart stream
     while let Some(item) = payload.next().await {
         let mut field = item?;
 
-        if field.name() != "source" {
+        if field.name() != "source" && field.name() != "name" {
             continue;
         }
 
         // Field in turn is stream of *Bytes* object
         while let Some(chunk) = field.next().await {
-            bytes.push(chunk?);
+            let chunk = chunk?;
+            if field.name() == "source" {
+                bytes.push(chunk);
+            } else if field.name() == "name" {
+                filename += String::from_utf8_lossy(&chunk.to_vec()).as_ref();
+            }
         }
     }
 
@@ -101,7 +123,7 @@ async fn upload(artist: web::Path<String>, mut payload: Multipart) -> Result<Htt
         return Ok(HttpResponse::BadRequest().into());
     }
 
-    let input = save_file(bytes, PathBuf::from("source.wav"))
+    let input = save_file(bytes, PathBuf::from(filename))
         .await
         .expect("save file error");
 
