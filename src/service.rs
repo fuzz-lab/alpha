@@ -19,22 +19,22 @@ impl Artist {
     /// Get model path
     pub fn model(&self) -> &'static str {
         match self {
-            Artist::Cat => "cat/G_2875.pth",
-            Artist::MaoBuYi => "maobuyi/G_3458.pth",
-            Artist::WangFei => "wf/G_4788.pth",
-            Artist::DuiZhang => "dz/G_5229.pth",
-            Artist::XiaoXiao => "xx/G_5229.pth",
+            Artist::Cat => "models/cat/G_2875.pth",
+            Artist::MaoBuYi => "models/maobuyi/G_3458.pth",
+            Artist::WangFei => "models/wf/G_4788.pth",
+            Artist::DuiZhang => "models/dz/G_5229.pth",
+            Artist::XiaoXiao => "models/xx/G_5229.pth",
         }
     }
 
     /// Get config path
     pub fn config(&self) -> &'static str {
         match self {
-            Artist::Cat => "cat/config.json",
-            Artist::MaoBuYi => "maobuyi/config.json",
-            Artist::WangFei => "wf/config.json",
-            Artist::DuiZhang => "dz/config.json",
-            Artist::XiaoXiao => "xx/config.json",
+            Artist::Cat => "models/cat/config.json",
+            Artist::MaoBuYi => "models/maobuyi/config.json",
+            Artist::WangFei => "models/wf/config.json",
+            Artist::DuiZhang => "models/dz/config.json",
+            Artist::XiaoXiao => "models/xx/config.json",
         }
     }
 }
@@ -57,8 +57,8 @@ async fn save_file(bytes: Vec<Bytes>, path: PathBuf) -> anyhow::Result<PathBuf> 
     let path = PathBuf::from("upload").join(path);
     let cloned_path = path.clone();
 
-    log::trace!("saving file at {:?}", cloned_path);
     // File::create is blocking operation, use threadpool
+    log::trace!("saving file at {:?}", cloned_path);
     let mut f = web::block(|| File::create(cloned_path)).await??;
 
     // Field in turn is stream of *Bytes* object
@@ -123,6 +123,7 @@ async fn upload(artist: web::Path<String>, mut payload: Multipart) -> Result<Htt
         return Ok(HttpResponse::BadRequest().into());
     }
 
+    filename += &format!("_{}", artist.as_str());
     let input = save_file(bytes, PathBuf::from(filename))
         .await
         .expect("save file error");
