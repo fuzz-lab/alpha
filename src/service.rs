@@ -5,6 +5,7 @@ use actix_web::{
 };
 use anyhow::Result;
 use futures_util::StreamExt as _;
+use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use std::{fs::File, io::Write, path::PathBuf, process::Command};
 
 enum Artist {
@@ -152,6 +153,10 @@ async fn download(req: HttpRequest, audio: web::Path<String>) -> Result<HttpResp
 
 /// start service
 pub async fn start(port: u16) -> anyhow::Result<()> {
+    let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
+    builder.set_private_key_file("key.pem", SslFiletype::PEM)?;
+    builder.set_certificate_chain_file("cert.pem")?;
+
     HttpServer::new(|| {
         let cors = Cors::default()
             .allow_any_origin()
